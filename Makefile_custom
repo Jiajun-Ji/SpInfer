@@ -1,0 +1,77 @@
+# SpInfer 自定义数据使用示例 Makefile
+# 使用方法: make -f Makefile_custom
+
+# 编译器设置
+HOST_COMPILER ?= g++
+CUDA_PATH ?= /usr/local/cuda
+NVCC := $(CUDA_PATH)/bin/nvcc -ccbin $(HOST_COMPILER)
+
+# 编译标志
+NVCCFLAGS := -m$(shell getconf LONG_BIT)
+CCFLAGS := -fPIC
+LDFLAGS :=
+
+ALL_CCFLAGS :=
+ALL_CCFLAGS += $(NVCCFLAGS)
+ALL_CCFLAGS += $(addprefix -Xcompiler ,$(CCFLAGS))
+
+ALL_LDFLAGS :=
+ALL_LDFLAGS += $(ALL_CCFLAGS)
+ALL_LDFLAGS += $(addprefix -Xlinker ,$(LDFLAGS))
+
+# 包含路径和库
+INCLUDES := -I/usr/local/cuda/include/ -I./build/ -I./csrc/ -I./kernel_benchmark/
+LIBRARIES := -lcublas -lcusparse
+
+# GPU架构
+SMS ?= 86
+$(foreach sm,$(SMS),$(eval GENCODE_FLAGS += -gencode arch=compute_$(sm),code=sm_$(sm)))
+
+# 编译选项
+ALL_CCFLAGS += --threads 0 --std=c++11
+ALL_CCFLAGS += -maxrregcount=255 
+ALL_CCFLAGS += --use_fast_math
+ALL_CCFLAGS += --ptxas-options=-v,-warn-lmem-usage,--warn-on-spills
+
+# 头文件依赖
+HEAD_FILES = build/SpMM_API.cuh \
+             csrc/Reduction_Kernel.cuh csrc/SpMM_Kernel.cuh \
+             csrc/MatMulUtilities.cuh \
+             csrc/MMA_PTX.cuh csrc/AsyncCopy_PTX.cuh \
+             csrc/TilingConfig.h
+
+# 目标规则
+all: custom_spmm_example
+
+custom_spmm_example: custom_spmm_example.o build/libSpMM_API.so
+	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) -o $@ $< -L./build -lSpMM_API $(LIBRARIES) -Xlinker -rpath=./build
+
+custom_spmm_example.o: custom_spmm_example.cu $(HEAD_FILES)
+	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
+
+# 确保SpMM库已编译
+build/libSpMM_API.so:
+	@echo "正在编译SpMM库..."
+	cd build && make -j
+
+clean:
+	rm -f custom_spmm_example custom_spmm_example.o
+
+# 运行示例
+run: custom_spmm_example
+	./custom_spmm_example 1024 4096 256 0.8
+
+# 不同配置的测试
+test_small: custom_spmm_example
+	@echo "测试小矩阵..."
+	./custom_spmm_example 512 2048 128 0.9
+
+test_medium: custom_spmm_example
+	@echo "测试中等矩阵..."
+	./custom_spmm_example 2048 4096 512 0.8
+
+test_large: custom_spmm_example
+	@echo "测试大矩阵..."
+	./custom_spmm_example 4096 8192 1024 0.7
+
+.PHONY: all clean run test_small test_medium test_large

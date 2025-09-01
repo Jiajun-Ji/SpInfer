@@ -2,3 +2,5 @@
 *.so
 *.o
 *.ncu-rep
+Input_date/
+*.nsys-rep

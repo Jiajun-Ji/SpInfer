@@ -35,7 +35,7 @@ LIBRARIES := -lcublas -lcusparse
 ################################################################################
 
 # Gencode arguments
-SMS ?= 89
+SMS ?= 86
 # Generate SASS code for each SM architecture listed in $(SMS)
 $(foreach sm,$(SMS),$(eval GENCODE_FLAGS += -gencode arch=compute_$(sm),code=sm_$(sm)))
 
