@@ -41,12 +41,18 @@ HEAD_FILES = build/SpMM_API.cuh \
              csrc/TilingConfig.h
 
 # 目标规则
-all: custom_spmm_example
+all: custom_spmm_example custom_spmm_example_skew
 
 custom_spmm_example: custom_spmm_example.o build/libSpMM_API.so
 	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) -o $@ $< -L./build -lSpMM_API $(LIBRARIES) -Xlinker -rpath=./build
 
 custom_spmm_example.o: custom_spmm_example.cu $(HEAD_FILES)
+	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
+
+custom_spmm_example_skew: custom_spmm_example_skew.o build/libSpMM_API.so
+	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) -o $@ $< -L./build -lSpMM_API $(LIBRARIES) -Xlinker -rpath=./build
+
+custom_spmm_example_skew.o: custom_spmm_example_skew.cu $(HEAD_FILES)
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
 # 确保SpMM库已编译
@@ -55,11 +61,14 @@ build/libSpMM_API.so:
 	cd build && make -j
 
 clean:
-	rm -f custom_spmm_example custom_spmm_example.o
+	rm -f custom_spmm_example custom_spmm_example.o custom_spmm_example_skew custom_spmm_example_skew.o
 
 # 运行示例
 run: custom_spmm_example
 	./custom_spmm_example 1024 4096 256 0.8
+
+run_skew: custom_spmm_example_skew
+	./custom_spmm_example_skew 1600 8192 16 2 0.8
 
 # 不同配置的测试
 test_small: custom_spmm_example
@@ -74,4 +83,9 @@ test_large: custom_spmm_example
 	@echo "测试大矩阵..."
 	./custom_spmm_example 4096 8192 1024 0.7
 
-.PHONY: all clean run test_small test_medium test_large
+# 偏斜数据测试
+test_skew: custom_spmm_example_skew
+	@echo "测试偏斜稀疏矩阵..."
+	./custom_spmm_example_skew 1600 8192 16 2 0.8
+
+.PHONY: all clean run run_skew test_small test_medium test_large test_skew
