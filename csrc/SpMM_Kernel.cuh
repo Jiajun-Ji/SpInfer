@@ -103,6 +103,12 @@ __global__ void SpMM_Kernel_bitmap_v3(const half*  A,
     const int* TileOffsets_ThisWarp = nullptr;
     const int WarpOffset = BlockOffset*4 + Warp_i;
     TileOffsets_ThisWarp = TileOffsets_Median + WarpOffset;
+
+    // 计算当前warp处理的全局起始行
+    int global_warp_row = Tile_Start_M + warp_start_row;
+    // 边界计算：90%的行数
+    const int DENSE_SPARSE_BOUNDARY = 16000 * 0.8;  // = 14400
+
 // gld addr of copying B tile from GlobalMemory to SharedMemory
     const half* BTileGlobalPTR =
         B + Tile_Start_N * K_Global
@@ -164,12 +170,42 @@ __global__ void SpMM_Kernel_bitmap_v3(const half*  A,
         CopyTileFromGlobalToShared_Sparse<TilingConfig>(smem, Compressed_A + StartIndex_SparseTiles, NNZ_ThisTile, GlobalCopy);
         cp_async_group_commit();
 
+        // Copying next Bitmap Tile to write shem
+        // if (global_warp_row < DENSE_SPARSE_BOUNDARY){
+        //     CopyTileFromGlobalToShared_Bitmap_1_64<TilingConfig::TILE_BITMAP_M_V3, TilingConfig>(smem_Bitmap, BitmapTileGlobalPTR, GlobalCopy);  // Load the 2*8 bitmap after the double buffer B shared tile
+        //     // Copying next Sparse A Tile to write shem
+        //     CopyTileFromGlobalToShared_Sparse<TilingConfig>(smem, Compressed_A + StartIndex_SparseTiles, NNZ_ThisTile, GlobalCopy);
+        //     cp_async_group_commit();
+        // }
+
         // Copying next B Tile to write shem
+        // if (global_warp_row < DENSE_SPARSE_BOUNDARY){
+        //     CopyTileFromGlobalToShared_X_64<TilingConfig::TILE_N2, TilingConfig>(
+        //     smem_write_B_PTR, BTileGlobalPTR, K_Global, GlobalCopy);
+        //     cp_async_group_commit();
+        // }
+
         CopyTileFromGlobalToShared_X_64<TilingConfig::TILE_N2, TilingConfig>(
             smem_write_B_PTR, BTileGlobalPTR, K_Global, GlobalCopy);
         cp_async_group_commit();
 
+        // 根据区域选择计算路径
+        // if (global_warp_row < DENSE_SPARSE_BOUNDARY) {
+        //     // 前90%行：稠密区域，使用Tensor Core
+        //     PipelinedCoreComputationsBitmap<TilingConfig>(c, a, b, smem_read_B_PTR, warp_start_row, warp_start_col);
+        // } else {
+        //     // 后10%行：稀疏区域，使用CUDA Core
+        //     // PipelinedCoreComputationsCudaCore<TilingConfig>(c, a, b, smem_read_B_PTR, warp_start_row, warp_start_col);
+        // }
+
         PipelinedCoreComputationsBitmap<TilingConfig>(c, a, b, smem_read_B_PTR, warp_start_row, warp_start_col);
+
+        // if (global_warp_row < DENSE_SPARSE_BOUNDARY){
+        //     cp_async_wait_group<1>();
+        //     __syncthreads();
+        //     // loading next A from shared to reg a. This can be concurrent with loading next B to shem
+        //     SpMM_LoadFragAwithBitmapFromShem(a, smem + TileOffsets_ThisWarp[(tile_id_k+1)*4], smem_BitmapWarp, GlobalCopy);
+        // }
        
         cp_async_wait_group<1>();
         __syncthreads();

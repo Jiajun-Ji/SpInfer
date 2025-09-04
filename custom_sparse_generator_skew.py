@@ -322,13 +322,13 @@ if __name__ == "__main__":
 
     # 定义稀疏度分布
     sparsity_distribution = {
-        40: 0.9,  
-        90: 0.1, 
+        40: 0.8,  
+        95: 0.2, 
     }
 
     # 生成偏斜矩阵
     matrix, block_info = generate_skewed_sparse_matrix(
-        M=16000, K=8192,
+        M=20480, K=8192,
         sparsity_dist=sparsity_distribution,
         seed=42
     )

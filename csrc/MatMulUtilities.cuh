@@ -365,4 +365,49 @@ StoreToSharedMemoryFromRegisterBitmapV3(float (*smem_CFrag)[TilingConfig::TILE_M
     }
 }
 
+// 使用FMA指令的CUDA Core版本 - 模拟计算路径
+template<typename TilingConfig>
+__device__ __forceinline__ void PipelinedCoreComputationsCudaCore(
+    float c[][REG_PER_C_TENSOR_16_16],
+    uint32_t __restrict__ a[][4],
+    uint32_t __restrict__ b[][4],
+    half* __restrict__ smem_read_B_PTR,
+    int warp_start_row,
+    int warp_start_col
+) {
+    int lane_id = threadIdx.x % 32;
+
+    // 将fragment转换为half数组进行element-wise访问
+    half* a_elements = reinterpret_cast<half*>(a);
+    half* b_elements = reinterpret_cast<half*>(b);
+
+    // 模拟计算路径：每个线程处理部分元素，不需要完整计算
+    if (lane_id < 16) {  // 前16个线程工作
+        int row = lane_id;
+        int col = 0;  // 只计算第0列，模拟计算路径
+
+        // 使用FMA指令进行模拟计算
+        float accumulator = c[row][col];
+
+        // 简化的内积计算：只计算前4个K维度（模拟理想情况）
+        for (int k = 0; k < 4; k++) {
+            // 从fragment中获取A和B的值（简化索引）
+            int a_idx = (row * 4 + k) % 32;  // 确保不越界
+            int b_idx = (k * 4) % 32;        // 确保不越界
+
+            half a_val = a_elements[a_idx];
+            half b_val = b_elements[b_idx];
+
+            // 使用FMA指令：accumulator = a_val * b_val + accumulator
+            accumulator = __fmaf_rn(__half2float(a_val), __half2float(b_val), accumulator);
+        }
+
+        // 添加标记值以便识别CUDA Core路径
+        c[row][col] = accumulator + 10.0f;  // 加10作为CUDA Core标记
+    }
+
+    // 简化同步：只同步参与计算的线程
+    __syncwarp();
+}
+
 #endif
